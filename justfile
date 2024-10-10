@@ -7,3 +7,6 @@ dev:
 
 forbid:
   ./bin/forbid
+
+fmt:
+  prettier --write .
