@@ -20,7 +20,7 @@ import { invoke } from '@tauri-apps/api/tauri';
 import { TriangleAlert } from 'lucide-react';
 import React, { useEffect, useState } from 'react';
 
-import { Editor } from './components/Editor';
+import { Editor } from './components/editor';
 import { assertNever } from './lib/utils';
 
 interface Message {
@@ -176,28 +176,30 @@ const App: React.FC = () => {
         {selectedChat ? (
           <Card className='flex flex-grow flex-col'>
             <CardHeader className='flex flex-row items-center justify-between'>
-              <CardTitle className='text-lg'>{selectedChat.name}</CardTitle>
-              <Select
-                value={selectedChat.model}
-                onValueChange={handleModelChange}
-              >
-                <SelectTrigger className='w-[180px]'>
-                  <SelectValue placeholder='Select a model' />
-                </SelectTrigger>
-                <SelectContent>
-                  {selectedChat.provider === 'openai'
-                    ? OPENAI_MODELS.map((model) => (
-                        <SelectItem key={model} value={model}>
-                          {model}
-                        </SelectItem>
-                      ))
-                    : OLLAMA_MODELS.map((model) => (
-                        <SelectItem key={model} value={model}>
-                          {model}
-                        </SelectItem>
-                      ))}
-                </SelectContent>
-              </Select>
+              <div className='flex flex-col space-y-2'>
+                <CardTitle className='text-md'>{selectedChat.name}</CardTitle>
+                <Select
+                  value={selectedChat.model}
+                  onValueChange={handleModelChange}
+                >
+                  <SelectTrigger className='w-[180px]'>
+                    <SelectValue placeholder='Select a model' />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {selectedChat.provider === 'openai'
+                      ? OPENAI_MODELS.map((model) => (
+                          <SelectItem key={model} value={model}>
+                            {model}
+                          </SelectItem>
+                        ))
+                      : OLLAMA_MODELS.map((model) => (
+                          <SelectItem key={model} value={model}>
+                            {model}
+                          </SelectItem>
+                        ))}
+                  </SelectContent>
+                </Select>
+              </div>
             </CardHeader>
             <CardContent className='flex-grow overflow-y-auto'>
               {selectedChat.messages.map((message, index) => (
