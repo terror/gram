@@ -16,9 +16,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { invoke } from '@tauri-apps/api/tauri';
+import { core } from '@tauri-apps/api';
 import { TriangleAlert } from 'lucide-react';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 
 import { Editor } from './components/editor';
 import { assertNever } from './lib/utils';
@@ -45,16 +45,33 @@ const EXAMPLE_CHATS: Chat[] = [
     name: 'Example (Ollama)',
     messages: [],
     provider: 'ollama',
-    model: 'llama2',
+    model: 'llama3',
   },
   {
     id: '2',
     name: 'Example (OpenAI)',
     messages: [],
     provider: 'openai',
-    model: 'gpt-4',
+    model: 'gpt-4o',
   },
 ];
+
+const sendOllamaMessage = async (model: string, message: string) => {
+  try {
+    // Updated: Fetch an array of response parts
+    const responses = await core.invoke<OllamaResponse[]>(
+      'send_ollama_message',
+      {
+        model,
+        message,
+      }
+    );
+    return responses;
+  } catch (error) {
+    console.error('Failed to send message to Ollama:', error);
+    throw error;
+  }
+};
 
 const App: React.FC = () => {
   const [chats, setChats] = useState<Chat[]>(EXAMPLE_CHATS);
@@ -62,13 +79,46 @@ const App: React.FC = () => {
   const [input, setInput] = useState('');
   const [openAIKey, setOpenAIKey] = useState<string | null>(null);
 
+  const [isStreaming, setIsStreaming] = useState(false);
+  const streamIntervalRef = useRef<NodeJS.Timeout | null>(null);
+
   useEffect(() => {
-    invoke<{ openai_api_key: string | null }>('get_config')
+    core
+      .invoke<{ openai_api_key: string | null }>('get_config')
       .then((config) => setOpenAIKey(config.openai_api_key))
       .catch((error) => console.error('Failed to load config:', error));
   }, []);
 
-  const handleSendMessage = () => {
+  useEffect(() => {
+    return () => {
+      if (streamIntervalRef.current) {
+        clearInterval(streamIntervalRef.current);
+      }
+    };
+  }, []);
+
+  const simulateStreaming = (
+    fullResponse: string,
+    callback: (partial: string) => void
+  ) => {
+    let index = 0;
+    setIsStreaming(true);
+
+    streamIntervalRef.current = setInterval(() => {
+      if (index < fullResponse.length) {
+        const partial = fullResponse.slice(0, index + 1);
+        callback(partial);
+        index++;
+      } else {
+        if (streamIntervalRef.current) {
+          clearInterval(streamIntervalRef.current);
+        }
+        setIsStreaming(false);
+      }
+    }, 20); // Adjust this value to control the speed of the streaming
+  };
+
+  const handleSendMessage = async () => {
     if (!selectedChat || !input.trim()) return;
 
     const newMessage: Message = { role: 'user', content: input };
@@ -84,34 +134,72 @@ const App: React.FC = () => {
     setSelectedChat(updatedChat);
     setInput('');
 
-    // TODO: Implement actual API calls to Ollama or OpenAI here
-    // For now, we'll just simulate a response
-    setTimeout(() => {
-      const assistantMessage: Message = {
-        role: 'assistant',
-        content: `This is a simulated response from ${selectedChat.provider} using ${selectedChat.model} model.`,
-      };
+    try {
+      if (selectedChat.provider === 'ollama') {
+        const responseParts = await sendOllamaMessage(
+          selectedChat.model,
+          input
+        );
 
-      const chatWithResponse = {
-        ...updatedChat,
-        messages: [...updatedChat.messages, assistantMessage],
-      };
+        const assistantMessage: Message = {
+          role: 'assistant',
+          content: '',
+        };
 
-      setChats(
-        chats.map((chat) =>
-          chat.id === chatWithResponse.id ? chatWithResponse : chat
-        )
-      );
+        let chatWithResponse = {
+          ...updatedChat,
+          messages: [...updatedChat.messages, assistantMessage],
+        };
 
-      setSelectedChat(chatWithResponse);
-    }, 1000);
+        setChats(
+          chats.map((chat) =>
+            chat.id === chatWithResponse.id ? chatWithResponse : chat
+          )
+        );
+
+        setSelectedChat(chatWithResponse);
+
+        // Update the messages incrementally as we receive response parts
+        for (const responsePart of responseParts) {
+          setSelectedChat((prevChat) => {
+            const newMessages = prevChat.messages.map((msg, index) =>
+              index === prevChat.messages.length - 1
+                ? { ...msg, content: msg.content + responsePart.response }
+                : msg
+            );
+
+            return {
+              ...prevChat,
+              messages: newMessages,
+            };
+          });
+        }
+      } else {
+        // Simulated response for OpenAI
+        const response = `This is a simulated response from ${selectedChat.provider} using ${selectedChat.model} model.`;
+        simulateStreaming(response, (partial) => {
+          setSelectedChat((prevChat) => ({
+            ...prevChat,
+            messages: prevChat.messages.map((msg, index) =>
+              index === prevChat.messages.length - 1
+                ? { ...msg, content: partial }
+                : msg
+            ),
+          }));
+        });
+      }
+    } catch (error) {
+      console.error('Failed to get response:', error);
+      // Handle error (e.g., show an error message to the user)
+    }
   };
 
   const handleSetOpenAIKey = async () => {
     const key = prompt('Enter your OpenAI API key:');
 
     if (key) {
-      invoke('set_openai_api_key', { apiKey: key })
+      core
+        .invoke('set_openai_api_key', { apiKey: key })
         .then(() => {
           setOpenAIKey(key);
           console.log('OpenAI API key set successfully');
@@ -179,8 +267,8 @@ const App: React.FC = () => {
               <div className='flex flex-col space-y-2'>
                 <CardTitle className='text-md'>{selectedChat.name}</CardTitle>
                 <Select
-                  value={selectedChat.model}
                   onValueChange={handleModelChange}
+                  value={selectedChat.model}
                 >
                   <SelectTrigger className='w-[180px]'>
                     <SelectValue placeholder='Select a model' />
@@ -213,6 +301,10 @@ const App: React.FC = () => {
                     }`}
                   >
                     {message.content}
+                    {isStreaming &&
+                      index === selectedChat.messages.length - 1 && (
+                        <span className='animate-pulse'>▊</span>
+                      )}
                   </span>
                 </div>
               ))}
