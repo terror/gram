@@ -16,16 +16,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Textarea } from '@/components/ui/textarea';
 import { invoke } from '@tauri-apps/api/tauri';
-import { Send, TriangleAlert } from 'lucide-react';
-import React, {
-  ChangeEvent,
-  KeyboardEvent,
-  useEffect,
-  useRef,
-  useState,
-} from 'react';
+import { TriangleAlert } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+
+import { Editor } from './components/Editor';
+import { assertNever } from './lib/utils';
 
 interface Message {
   role: 'user' | 'assistant';
@@ -40,78 +36,28 @@ interface Chat {
   model: string;
 }
 
-const ollamaModels = ['llama3', 'codellama', 'mistral'];
-const openaiModels = ['gpt-3.5-turbo', 'gpt-4o'];
+const OLLAMA_MODELS = ['llama3', 'codellama', 'mistral'];
+const OPENAI_MODELS = ['gpt-3.5-turbo', 'gpt-4o'];
 
-const AutoResizeTextarea: React.FC<{
-  value: string;
-  onChange: (value: string) => void;
-  onSend: () => void;
-}> = ({ value, onChange, onSend }) => {
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
-
-  useEffect(() => {
-    if (textareaRef.current) {
-      textareaRef.current.style.height = 'auto';
-      textareaRef.current.style.height = `${textareaRef.current.scrollHeight}px`;
-    }
-  }, [value]);
-
-  const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      onSend();
-    }
-  };
-
-  return (
-    <div className='relative'>
-      <textarea
-        ref={textareaRef}
-        value={value}
-        onChange={(e: ChangeEvent<HTMLTextAreaElement>) =>
-          onChange(e.target.value)
-        }
-        onKeyDown={handleKeyDown}
-        autoFocus={true}
-        autoComplete='off'
-        autoCorrect='off'
-        className='w-full resize-none overflow-hidden rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50'
-        placeholder='Type your message...'
-        rows={1}
-      />
-      {value.trim() !== '' && (
-        <Button
-          onClick={onSend}
-          className='hover:none absolute right-1 hover:border-inherit hover:bg-inherit hover:text-inherit hover:no-underline hover:shadow-none'
-          size='sm'
-          variant='ghost'
-        >
-          <Send size={18} />
-        </Button>
-      )}
-    </div>
-  );
-};
+const EXAMPLE_CHATS: Chat[] = [
+  {
+    id: '1',
+    name: 'Example (Ollama)',
+    messages: [],
+    provider: 'ollama',
+    model: 'llama2',
+  },
+  {
+    id: '2',
+    name: 'Example (OpenAI)',
+    messages: [],
+    provider: 'openai',
+    model: 'gpt-4',
+  },
+];
 
 const App: React.FC = () => {
-  const [chats, setChats] = useState<Chat[]>([
-    {
-      id: '1',
-      name: 'Example (Ollama)',
-      messages: [],
-      provider: 'ollama',
-      model: 'llama2',
-    },
-    {
-      id: '2',
-      name: 'Example (OpenAI)',
-      messages: [],
-      provider: 'openai',
-      model: 'gpt-4',
-    },
-  ]);
-
+  const [chats, setChats] = useState<Chat[]>(EXAMPLE_CHATS);
   const [selectedChat, setSelectedChat] = useState<Chat>(chats[0]);
   const [input, setInput] = useState('');
   const [openAIKey, setOpenAIKey] = useState<string | null>(null);
@@ -145,24 +91,20 @@ const App: React.FC = () => {
         role: 'assistant',
         content: `This is a simulated response from ${selectedChat.provider} using ${selectedChat.model} model.`,
       };
+
       const chatWithResponse = {
         ...updatedChat,
         messages: [...updatedChat.messages, assistantMessage],
       };
+
       setChats(
         chats.map((chat) =>
           chat.id === chatWithResponse.id ? chatWithResponse : chat
         )
       );
+
       setSelectedChat(chatWithResponse);
     }, 1000);
-  };
-
-  const handleKeyPress = (e: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      handleSendMessage();
-    }
   };
 
   const handleSetOpenAIKey = async () => {
@@ -199,19 +141,21 @@ const App: React.FC = () => {
           />
         );
       default:
-        return null;
+        assertNever(provider);
     }
   };
 
   const handleModelChange = (value: string) => {
     const updatedChat = { ...selectedChat, model: value };
+
     setSelectedChat(updatedChat);
+
     setChats(
       chats.map((chat) => (chat.id === updatedChat.id ? updatedChat : chat))
     );
   };
 
-  const disabled = selectedChat?.provider === 'openai' && !openAIKey;
+  const disabled = [selectedChat?.provider === 'openai' && !openAIKey];
 
   return (
     <div className='container mx-auto flex h-screen p-4'>
@@ -242,12 +186,12 @@ const App: React.FC = () => {
                 </SelectTrigger>
                 <SelectContent>
                   {selectedChat.provider === 'openai'
-                    ? openaiModels.map((model) => (
+                    ? OPENAI_MODELS.map((model) => (
                         <SelectItem key={model} value={model}>
                           {model}
                         </SelectItem>
                       ))
-                    : ollamaModels.map((model) => (
+                    : OLLAMA_MODELS.map((model) => (
                         <SelectItem key={model} value={model}>
                           {model}
                         </SelectItem>
@@ -290,10 +234,11 @@ const App: React.FC = () => {
                   </AlertDescription>
                 </Alert>
               )}
-              <AutoResizeTextarea
-                value={input}
+              <Editor
+                disabled={disabled.some(Boolean)}
                 onChange={setInput}
                 onSend={handleSendMessage}
+                value={input}
               />
             </CardFooter>
           </Card>
