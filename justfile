@@ -10,3 +10,4 @@ forbid:
 
 fmt:
   prettier --write .
+  cd src-tauri && cargo fmt
