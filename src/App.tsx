@@ -1,3 +1,5 @@
+import ollamaIcon from '@/assets/ollama-icon.png';
+import openaiIcon from '@/assets/openai-icon.png';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import {
@@ -7,14 +9,23 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
-import { ask } from '@tauri-apps/api/dialog';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { Textarea } from '@/components/ui/textarea';
 import { invoke } from '@tauri-apps/api/tauri';
-import { TriangleAlert } from 'lucide-react';
-import React, { useEffect, useState } from 'react';
-
-import ollamaIcon from '@/assets/ollama-icon.png';
-import openaiIcon from '@/assets/openai-icon.png';
+import { Send, TriangleAlert } from 'lucide-react';
+import React, {
+  ChangeEvent,
+  KeyboardEvent,
+  useEffect,
+  useRef,
+  useState,
+} from 'react';
 
 interface Message {
   role: 'user' | 'assistant';
@@ -26,21 +37,78 @@ interface Chat {
   name: string;
   messages: Message[];
   provider: 'ollama' | 'openai';
+  model: string;
 }
+
+const ollamaModels = ['llama3', 'codellama', 'mistral'];
+const openaiModels = ['gpt-3.5-turbo', 'gpt-4o'];
+
+const AutoResizeTextarea: React.FC<{
+  value: string;
+  onChange: (value: string) => void;
+  onSend: () => void;
+}> = ({ value, onChange, onSend }) => {
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    if (textareaRef.current) {
+      textareaRef.current.style.height = 'auto';
+      textareaRef.current.style.height = `${textareaRef.current.scrollHeight}px`;
+    }
+  }, [value]);
+
+  const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      onSend();
+    }
+  };
+
+  return (
+    <div className='relative'>
+      <textarea
+        ref={textareaRef}
+        value={value}
+        onChange={(e: ChangeEvent<HTMLTextAreaElement>) =>
+          onChange(e.target.value)
+        }
+        onKeyDown={handleKeyDown}
+        autoFocus={true}
+        autoComplete='off'
+        autoCorrect='off'
+        className='w-full resize-none overflow-hidden rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50'
+        placeholder='Type your message...'
+        rows={1}
+      />
+      {value.trim() !== '' && (
+        <Button
+          onClick={onSend}
+          className='hover:none absolute right-1 hover:border-inherit hover:bg-inherit hover:text-inherit hover:no-underline hover:shadow-none'
+          size='sm'
+          variant='ghost'
+        >
+          <Send size={18} />
+        </Button>
+      )}
+    </div>
+  );
+};
 
 const App: React.FC = () => {
   const [chats, setChats] = useState<Chat[]>([
     {
       id: '1',
-      name: 'Example',
+      name: 'Example (Ollama)',
       messages: [],
       provider: 'ollama',
+      model: 'llama2',
     },
     {
       id: '2',
-      name: 'Example',
+      name: 'Example (OpenAI)',
       messages: [],
       provider: 'openai',
+      model: 'gpt-4',
     },
   ]);
 
@@ -75,7 +143,7 @@ const App: React.FC = () => {
     setTimeout(() => {
       const assistantMessage: Message = {
         role: 'assistant',
-        content: `This is a simulated response from ${selectedChat.provider}.`,
+        content: `This is a simulated response from ${selectedChat.provider} using ${selectedChat.model} model.`,
       };
       const chatWithResponse = {
         ...updatedChat,
@@ -90,8 +158,14 @@ const App: React.FC = () => {
     }, 1000);
   };
 
+  const handleKeyPress = (e: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleSendMessage();
+    }
+  };
+
   const handleSetOpenAIKey = async () => {
-    const yes = await ask('Are you sure?', 'Tauri');
     const key = prompt('Enter your OpenAI API key:');
 
     if (key) {
@@ -106,29 +180,48 @@ const App: React.FC = () => {
     }
   };
 
-const getProviderIcon = (provider: 'ollama' | 'openai') => {
-  switch (provider) {
-    case 'ollama':
-      return <img src={ollamaIcon} alt="Ollama" className="w-5 h-5 mr-2" />;
-    case 'openai':
-      return <img src={openaiIcon} alt="OpenAI" className="w-5 h-5 mr-2" />;
-    default:
-      return null;
-  }
-};
+  const getProviderIcon = (provider: 'ollama' | 'openai') => {
+    switch (provider) {
+      case 'ollama':
+        return (
+          <img
+            src={ollamaIcon}
+            alt='Ollama'
+            className='mr-2 h-5 w-5 rounded-sm'
+          />
+        );
+      case 'openai':
+        return (
+          <img
+            src={openaiIcon}
+            alt='OpenAI'
+            className='mr-2 h-5 w-5 rounded-sm'
+          />
+        );
+      default:
+        return null;
+    }
+  };
 
-  const disabled = [selectedChat?.provider === 'openai' && !openAIKey];
+  const handleModelChange = (value: string) => {
+    const updatedChat = { ...selectedChat, model: value };
+    setSelectedChat(updatedChat);
+    setChats(
+      chats.map((chat) => (chat.id === updatedChat.id ? updatedChat : chat))
+    );
+  };
+
+  const disabled = selectedChat?.provider === 'openai' && !openAIKey;
 
   return (
     <div className='container mx-auto flex h-screen p-4'>
       <div className='w-1/4 pr-4'>
-        <h2 className='mb-4 text-2xl font-bold'>gram</h2>
-{chats.map((chat) => (
+        {chats.map((chat) => (
           <Button
             key={chat.id}
             onClick={() => setSelectedChat(chat)}
             variant={selectedChat?.id === chat.id ? 'default' : 'outline'}
-            className="w-full mb-2 flex items-center justify-start"
+            className='mb-2 flex w-full items-center justify-start'
           >
             {getProviderIcon(chat.provider)}
             {chat.name}
@@ -138,8 +231,29 @@ const getProviderIcon = (provider: 'ollama' | 'openai') => {
       <div className='flex w-3/4 flex-col'>
         {selectedChat ? (
           <Card className='flex flex-grow flex-col'>
-            <CardHeader>
-              <CardTitle>{selectedChat.name}</CardTitle>
+            <CardHeader className='flex flex-row items-center justify-between'>
+              <CardTitle className='text-lg'>{selectedChat.name}</CardTitle>
+              <Select
+                value={selectedChat.model}
+                onValueChange={handleModelChange}
+              >
+                <SelectTrigger className='w-[180px]'>
+                  <SelectValue placeholder='Select a model' />
+                </SelectTrigger>
+                <SelectContent>
+                  {selectedChat.provider === 'openai'
+                    ? openaiModels.map((model) => (
+                        <SelectItem key={model} value={model}>
+                          {model}
+                        </SelectItem>
+                      ))
+                    : ollamaModels.map((model) => (
+                        <SelectItem key={model} value={model}>
+                          {model}
+                        </SelectItem>
+                      ))}
+                </SelectContent>
+              </Select>
             </CardHeader>
             <CardContent className='flex-grow overflow-y-auto'>
               {selectedChat.messages.map((message, index) => (
@@ -148,7 +262,9 @@ const getProviderIcon = (provider: 'ollama' | 'openai') => {
                   className={`mb-4 ${message.role === 'user' ? 'text-right' : 'text-left'}`}
                 >
                   <span
-                    className={`inline-block rounded-lg p-2 ${message.role === 'user' ? 'bg-blue-100' : 'bg-gray-100'}`}
+                    className={`inline-block rounded-lg p-2 ${
+                      message.role === 'user' ? 'bg-blue-100' : 'bg-gray-100'
+                    }`}
                   >
                     {message.content}
                   </span>
@@ -174,16 +290,11 @@ const getProviderIcon = (provider: 'ollama' | 'openai') => {
                   </AlertDescription>
                 </Alert>
               )}
-              <div className='flex'>
-                <Input
-                  value={input}
-                  disabled={disabled.some(Boolean)}
-                  onChange={(e) => setInput(e.target.value)}
-                  placeholder='Type your message...'
-                  className='mr-2 flex-grow'
-                />
-                <Button onClick={handleSendMessage}>Send</Button>
-              </div>
+              <AutoResizeTextarea
+                value={input}
+                onChange={setInput}
+                onSend={handleSendMessage}
+              />
             </CardFooter>
           </Card>
         ) : (
