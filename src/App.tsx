@@ -17,8 +17,14 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { core } from '@tauri-apps/api';
+import 'highlight.js/styles/base16/seti-ui.css';
+import 'katex/dist/katex.min.css';
 import { TriangleAlert } from 'lucide-react';
 import React, { useEffect, useRef, useState } from 'react';
+import ReactMarkdown from 'react-markdown';
+import rehypeHighlight from 'rehype-highlight';
+import rehypeKatex from 'rehype-katex';
+import remarkMath from 'remark-math';
 
 import { Editor } from './components/editor';
 import { assertNever } from './lib/utils';
@@ -56,16 +62,19 @@ const EXAMPLE_CHATS: Chat[] = [
   },
 ];
 
+const PRE = `
+Wrap all of your math equations in $$.
+
+  e.g. $1 + 1$
+`;
+
 const sendOllamaMessage = async (model: string, message: string) => {
   try {
     // Updated: Fetch an array of response parts
-    const responses = await core.invoke<OllamaResponse[]>(
-      'send_ollama_message',
-      {
-        model,
-        message,
-      }
-    );
+    const responses = await core.invoke('send_ollama_message', {
+      model,
+      message: PRE + message,
+    });
     return responses;
   } catch (error) {
     console.error('Failed to send message to Ollama:', error);
@@ -136,7 +145,7 @@ const App: React.FC = () => {
 
     try {
       if (selectedChat.provider === 'ollama') {
-        const responseParts = await sendOllamaMessage(
+        const responseParts: any = await sendOllamaMessage(
           selectedChat.model,
           input
         );
@@ -300,7 +309,16 @@ const App: React.FC = () => {
                       message.role === 'user' ? 'bg-blue-100' : 'bg-gray-100'
                     }`}
                   >
-                    {message.content}
+                    {message.role === 'user' ? (
+                      message.content
+                    ) : (
+                      <ReactMarkdown
+                        remarkPlugins={[remarkMath]}
+                        rehypePlugins={[rehypeHighlight, rehypeKatex]}
+                      >
+                        {message.content}
+                      </ReactMarkdown>
+                    )}
                     {isStreaming &&
                       index === selectedChat.messages.length - 1 && (
                         <span className='animate-pulse'>▊</span>

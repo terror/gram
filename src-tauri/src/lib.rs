@@ -118,7 +118,8 @@ async fn pull_model_if_needed(model: &str) -> Result {
       .json::<serde_json::Value>()
       .await?;
 
-    if !(pull_response.get("status").and_then(|s| s.as_str()) == Some("success"))
+    if !(pull_response.get("status").and_then(|s| s.as_str())
+      == Some("success"))
     {
       return Err(Error::DownloadModel(format!(
         "Failed to pull model: {}",
