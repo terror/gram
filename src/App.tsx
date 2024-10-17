@@ -26,7 +26,7 @@ import rehypeHighlight from 'rehype-highlight';
 import rehypeKatex from 'rehype-katex';
 import remarkMath from 'remark-math';
 
-import { Editor } from './components/editor';
+import { Textarea } from './components/textarea';
 import { assertNever } from './lib/utils';
 
 interface Message {
@@ -346,7 +346,7 @@ const App: React.FC = () => {
                   </AlertDescription>
                 </Alert>
               )}
-              <Editor
+              <Textarea
                 disabled={disabled.some(Boolean)}
                 onChange={setInput}
                 onSend={handleSendMessage}

@@ -2,7 +2,7 @@ import { Button } from '@/components/ui/button';
 import { Send } from 'lucide-react';
 import { ChangeEvent, KeyboardEvent, useEffect, useRef } from 'react';
 
-export const Editor: React.FC<{
+export const Textarea: React.FC<{
   disabled: boolean;
   onChange: (value: string) => void;
   onSend: () => void;

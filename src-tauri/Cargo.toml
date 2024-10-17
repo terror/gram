@@ -26,4 +26,5 @@ thiserror = "1.0.64"
 reqwest = { version = "0.12.8", features = ["json"] }
 futures = "0.3.31"
 tokio = "1.40.0"
+typeshare = "1.0.3"
 
