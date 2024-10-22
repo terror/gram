@@ -18,5 +18,5 @@ bun run tauri dev
 
 ### Prior Art
 
-**gram** is my personal, open-source version of tools similar to [LMStudio](https://lmstudio.ai/) or
-[Bolt](https://boltai.com/).
+**gram** is my personal, open-source version of tools similar to
+[LMStudio](https://lmstudio.ai/) or [Bolt](https://boltai.com/).

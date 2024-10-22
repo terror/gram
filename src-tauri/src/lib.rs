@@ -28,7 +28,7 @@ enum Provider {
 
 #[derive(Debug)]
 #[typeshare]
-enum MessageKind {
+enum Role {
   User,
   Assistant,
 }
@@ -36,7 +36,7 @@ enum MessageKind {
 #[derive(Debug)]
 #[typeshare]
 struct Message {
-  kind: MessageKind,
+  role: Role,
   content: String,
 }
 
@@ -57,7 +57,6 @@ pub fn run() {
     .invoke_handler(tauri::generate_handler![
       get_config,
       save_config,
-      send_ollama_message,
       set_openai_api_key,
     ])
     .run(tauri::generate_context!())

@@ -20,27 +20,15 @@ import { core } from '@tauri-apps/api';
 import 'highlight.js/styles/base16/seti-ui.css';
 import 'katex/dist/katex.min.css';
 import { TriangleAlert } from 'lucide-react';
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import rehypeHighlight from 'rehype-highlight';
 import rehypeKatex from 'rehype-katex';
 import remarkMath from 'remark-math';
 
 import { Textarea } from './components/textarea';
+import { Chat, Message, Provider, Role } from './lib/types';
 import { assertNever } from './lib/utils';
-
-interface Message {
-  role: 'user' | 'assistant';
-  content: string;
-}
-
-interface Chat {
-  id: string;
-  name: string;
-  messages: Message[];
-  provider: 'ollama' | 'openai';
-  model: string;
-}
 
 const OLLAMA_MODELS = ['llama3', 'codellama', 'mistral'];
 const OPENAI_MODELS = ['gpt-3.5-turbo', 'gpt-4o'];
@@ -50,46 +38,23 @@ const EXAMPLE_CHATS: Chat[] = [
     id: '1',
     name: 'Example (Ollama)',
     messages: [],
-    provider: 'ollama',
+    provider: Provider.Ollama,
     model: 'llama3',
   },
   {
     id: '2',
     name: 'Example (OpenAI)',
     messages: [],
-    provider: 'openai',
+    provider: Provider.OpenAI,
     model: 'gpt-4o',
   },
 ];
-
-const PRE = `
-Wrap all of your math equations in $$.
-
-  e.g. $1 + 1$
-`;
-
-const sendOllamaMessage = async (model: string, message: string) => {
-  try {
-    // Updated: Fetch an array of response parts
-    const responses = await core.invoke('send_ollama_message', {
-      model,
-      message: PRE + message,
-    });
-    return responses;
-  } catch (error) {
-    console.error('Failed to send message to Ollama:', error);
-    throw error;
-  }
-};
 
 const App: React.FC = () => {
   const [chats, setChats] = useState<Chat[]>(EXAMPLE_CHATS);
   const [selectedChat, setSelectedChat] = useState<Chat>(chats[0]);
   const [input, setInput] = useState('');
   const [openAIKey, setOpenAIKey] = useState<string | null>(null);
-
-  const [isStreaming, setIsStreaming] = useState(false);
-  const streamIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     core
@@ -98,39 +63,10 @@ const App: React.FC = () => {
       .catch((error) => console.error('Failed to load config:', error));
   }, []);
 
-  useEffect(() => {
-    return () => {
-      if (streamIntervalRef.current) {
-        clearInterval(streamIntervalRef.current);
-      }
-    };
-  }, []);
-
-  const simulateStreaming = (
-    fullResponse: string,
-    callback: (partial: string) => void
-  ) => {
-    let index = 0;
-    setIsStreaming(true);
-
-    streamIntervalRef.current = setInterval(() => {
-      if (index < fullResponse.length) {
-        const partial = fullResponse.slice(0, index + 1);
-        callback(partial);
-        index++;
-      } else {
-        if (streamIntervalRef.current) {
-          clearInterval(streamIntervalRef.current);
-        }
-        setIsStreaming(false);
-      }
-    }, 20); // Adjust this value to control the speed of the streaming
-  };
-
   const handleSendMessage = async () => {
     if (!selectedChat || !input.trim()) return;
 
-    const newMessage: Message = { role: 'user', content: input };
+    const newMessage: Message = { role: Role.User, content: input };
 
     const updatedChat = {
       ...selectedChat,
@@ -140,66 +76,107 @@ const App: React.FC = () => {
     setChats(
       chats.map((chat) => (chat.id === updatedChat.id ? updatedChat : chat))
     );
+
     setSelectedChat(updatedChat);
     setInput('');
 
+    const assistantMessage: Message = {
+      role: Role.Assistant,
+      content: '',
+    };
+
+    let chatWithResponse = {
+      ...updatedChat,
+      messages: [...updatedChat.messages, assistantMessage],
+    };
+
+    setChats(
+      chats.map((chat) =>
+        chat.id === chatWithResponse.id ? chatWithResponse : chat
+      )
+    );
+
+    setSelectedChat(chatWithResponse);
+
     try {
-      if (selectedChat.provider === 'ollama') {
-        const responseParts: any = await sendOllamaMessage(
-          selectedChat.model,
-          input
-        );
+      if (selectedChat.provider === Provider.Ollama) {
+        const ollamaMessages = selectedChat.messages.map((message) => ({
+          role: message.role,
+          content: message.content,
+        }));
 
-        const assistantMessage: Message = {
-          role: 'assistant',
-          content: '',
-        };
-
-        let chatWithResponse = {
-          ...updatedChat,
-          messages: [...updatedChat.messages, assistantMessage],
-        };
-
-        setChats(
-          chats.map((chat) =>
-            chat.id === chatWithResponse.id ? chatWithResponse : chat
-          )
-        );
-
-        setSelectedChat(chatWithResponse);
-
-        // Update the messages incrementally as we receive response parts
-        for (const responsePart of responseParts) {
-          setSelectedChat((prevChat) => {
-            const newMessages = prevChat.messages.map((msg, index) =>
-              index === prevChat.messages.length - 1
-                ? { ...msg, content: msg.content + responsePart.response }
-                : msg
-            );
-
-            return {
-              ...prevChat,
-              messages: newMessages,
-            };
-          });
-        }
-      } else {
-        // Simulated response for OpenAI
-        const response = `This is a simulated response from ${selectedChat.provider} using ${selectedChat.model} model.`;
-        simulateStreaming(response, (partial) => {
-          setSelectedChat((prevChat) => ({
-            ...prevChat,
-            messages: prevChat.messages.map((msg, index) =>
-              index === prevChat.messages.length - 1
-                ? { ...msg, content: partial }
-                : msg
-            ),
-          }));
+        ollamaMessages.push({
+          role: Role.User,
+          content: input,
         });
+
+        const response = await fetch('http://localhost:11434/api/chat', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            model: selectedChat.model,
+            messages: ollamaMessages,
+            stream: true,
+          }),
+        });
+
+        const reader = response.body?.getReader();
+        const decoder = new TextDecoder();
+
+        if (!reader) {
+          throw new Error('No response body');
+        }
+
+        while (true) {
+          const { value, done } = await reader.read();
+
+          if (done) break;
+
+          const chunk = decoder.decode(value);
+          const lines = chunk.split('\n').filter(Boolean);
+
+          for (const line of lines) {
+            try {
+              const parsedChunk = JSON.parse(line);
+
+              if (!parsedChunk.done && parsedChunk.message?.content) {
+                setSelectedChat((prevChat) => {
+                  const newMessages = prevChat.messages.map((msg, index) =>
+                    index === prevChat.messages.length - 1
+                      ? {
+                          ...msg,
+                          content: msg.content + parsedChunk.message.content,
+                        }
+                      : msg
+                  );
+
+                  return {
+                    ...prevChat,
+                    messages: newMessages,
+                  };
+                });
+              }
+            } catch (e) {
+              console.error('Error parsing chunk:', e);
+            }
+          }
+        }
+      } else if (selectedChat.provider === Provider.OpenAI) {
+        const response = `This is a response from ${selectedChat.provider} using ${selectedChat.model} model.`;
+
+        setSelectedChat((prevChat) => ({
+          ...prevChat,
+          messages: prevChat.messages.map((msg, index) =>
+            index === prevChat.messages.length - 1
+              ? { ...msg, content: response }
+              : msg
+          ),
+        }));
       }
     } catch (error) {
       console.error('Failed to get response:', error);
-      // Handle error (e.g., show an error message to the user)
     }
   };
 
@@ -219,9 +196,9 @@ const App: React.FC = () => {
     }
   };
 
-  const getProviderIcon = (provider: 'ollama' | 'openai') => {
+  const getProviderIcon = (provider: Provider) => {
     switch (provider) {
-      case 'ollama':
+      case Provider.Ollama:
         return (
           <img
             src={ollamaIcon}
@@ -229,7 +206,7 @@ const App: React.FC = () => {
             className='mr-2 h-5 w-5 rounded-sm'
           />
         );
-      case 'openai':
+      case Provider.OpenAI:
         return (
           <img
             src={openaiIcon}
@@ -252,7 +229,7 @@ const App: React.FC = () => {
     );
   };
 
-  const disabled = [selectedChat?.provider === 'openai' && !openAIKey];
+  const disabled = [selectedChat?.provider === Provider.OpenAI && !openAIKey];
 
   return (
     <div className='container mx-auto flex h-screen p-4'>
@@ -283,7 +260,7 @@ const App: React.FC = () => {
                     <SelectValue placeholder='Select a model' />
                   </SelectTrigger>
                   <SelectContent>
-                    {selectedChat.provider === 'openai'
+                    {selectedChat.provider === Provider.OpenAI
                       ? OPENAI_MODELS.map((model) => (
                           <SelectItem key={model} value={model}>
                             {model}
@@ -302,14 +279,14 @@ const App: React.FC = () => {
               {selectedChat.messages.map((message, index) => (
                 <div
                   key={index}
-                  className={`mb-4 ${message.role === 'user' ? 'text-right' : 'text-left'}`}
+                  className={`mb-4 ${message.role === Role.User ? 'text-right' : 'text-left'}`}
                 >
                   <span
                     className={`inline-block rounded-lg p-2 ${
-                      message.role === 'user' ? 'bg-blue-100' : 'bg-gray-100'
+                      message.role === Role.User ? 'bg-blue-100' : 'bg-gray-100'
                     }`}
                   >
-                    {message.role === 'user' ? (
+                    {message.role === Role.User ? (
                       message.content
                     ) : (
                       <ReactMarkdown
@@ -319,16 +296,12 @@ const App: React.FC = () => {
                         {message.content}
                       </ReactMarkdown>
                     )}
-                    {isStreaming &&
-                      index === selectedChat.messages.length - 1 && (
-                        <span className='animate-pulse'>▊</span>
-                      )}
                   </span>
                 </div>
               ))}
             </CardContent>
             <CardFooter className='flex-col items-stretch'>
-              {selectedChat?.provider === 'openai' && !openAIKey && (
+              {selectedChat?.provider === Provider.OpenAI && !openAIKey && (
                 <Alert variant='destructive' className='mb-4'>
                   <AlertTitle className='flex items-center space-x-1'>
                     <TriangleAlert />
