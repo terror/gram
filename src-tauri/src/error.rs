@@ -6,8 +6,6 @@ pub(crate) type Result<T = (), E = Error> = std::result::Result<T, E>;
 pub(crate) enum Error {
   #[error("Failed to get app directory")]
   AppDir,
-  #[error("Failed to download model: {0}")]
-  DownloadModel(String),
   #[error("Failed to read config file: {0}")]
   Io(#[from] std::io::Error),
   #[error("Failed to send request: {0}")]

@@ -4,8 +4,6 @@ use {
     error::{Error, Result},
     ipc::*,
   },
-  futures::StreamExt,
-  reqwest::Client,
   serde::{Deserialize, Serialize},
   std::fs,
   tauri::{AppHandle, Manager},
@@ -13,42 +11,12 @@ use {
   typeshare::typeshare,
 };
 
+mod chat;
 mod config;
 mod error;
 
 #[macro_use]
 mod ipc;
-
-#[derive(Debug)]
-#[typeshare]
-enum Provider {
-  OpenAI,
-  Ollama,
-}
-
-#[derive(Debug)]
-#[typeshare]
-enum Role {
-  User,
-  Assistant,
-}
-
-#[derive(Debug)]
-#[typeshare]
-struct Message {
-  role: Role,
-  content: String,
-}
-
-#[derive(Debug)]
-#[typeshare]
-struct Chat {
-  id: String,
-  name: String,
-  messages: Vec<Message>,
-  provider: Provider,
-  model: String,
-}
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
